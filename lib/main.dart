@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'dart:async';
+import 'llm_service.dart';
 
 void main() {
   runApp(const ChickAIApp());
@@ -38,11 +38,34 @@ class _ChatScreenState extends State<ChatScreen> {
   final List<Map<String, String>> _messages = [];
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  bool _isLoading = false;
+  final LLMService _llm = LLMService();
 
-  void _sendMessage() async {
+  bool _isLoading = false;
+  bool _modelReady = false;
+  String _status = 'Загрузка модели...';
+
+  @override
+  void initState() {
+    super.initState();
+    _initModel();
+  }
+
+  Future<void> _initModel() async {
+    try {
+      setState(() => _status = 'Загрузка модели Gemma 3 1B...');
+      await _llm.loadModel();
+      setState(() {
+        _modelReady = true;
+        _status = '';
+      });
+    } catch (e) {
+      setState(() => _status = 'Ошибка загрузки: $e');
+    }
+  }
+
+  Future<void> _sendMessage() async {
     final text = _controller.text.trim();
-    if (text.isEmpty || _isLoading) return;
+    if (text.isEmpty || _isLoading || !_modelReady) return;
 
     setState(() {
       _messages.add({'role': 'user', 'text': text});
@@ -51,16 +74,18 @@ class _ChatScreenState extends State<ChatScreen> {
     _controller.clear();
     _scrollToBottom();
 
-    // Заглушка — пока модель не подключена
-    await Future.delayed(const Duration(seconds: 1));
-
-    setState(() {
-      _messages.add({
-        'role': 'ai',
-        'text': 'ChickAI 1.0 на связи! Модель ещё не подключена, но скоро я заработаю.'
+    try {
+      final answer = await _llm.generate(text);
+      setState(() {
+        _messages.add({'role': 'ai', 'text': answer});
+        _isLoading = false;
       });
-      _isLoading = false;
-    });
+    } catch (e) {
+      setState(() {
+        _messages.add({'role': 'ai', 'text': 'Ошибка: $e'});
+        _isLoading = false;
+      });
+    }
     _scrollToBottom();
   }
 
@@ -90,7 +115,8 @@ class _ChatScreenState extends State<ChatScreen> {
                 'assets/logo.png',
                 width: 32,
                 height: 32,
-                errorBuilder: (_, __, ___) => const Icon(Icons.pets, color: Colors.amber),
+                errorBuilder: (_, __, ___) =>
+                    const Icon(Icons.pets, color: Colors.amber),
               ),
             ),
             const SizedBox(width: 10),
@@ -107,13 +133,23 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       body: Column(
         children: [
+          if (_status.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text(
+                _status,
+                style: const TextStyle(color: Colors.white54),
+              ),
+            ),
           Expanded(
             child: _messages.isEmpty
-                ? const Center(
+                ? Center(
                     child: Text(
-                      'Привет! Я ChickAI 1.0.\nСпроси меня о чём угодно.',
+                      _modelReady
+                          ? 'Привет! Я ChickAI 1.0.\nСпроси меня о чём угодно.'
+                          : 'Подожди, загружаю модель...',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white54, fontSize: 16),
+                      style: const TextStyle(color: Colors.white54, fontSize: 16),
                     ),
                   )
                 : ListView.builder(
@@ -124,7 +160,8 @@ class _ChatScreenState extends State<ChatScreen> {
                       final msg = _messages[index];
                       final isUser = msg['role'] == 'user';
                       return Align(
-                        alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+                        alignment:
+                            isUser ? Alignment.centerRight : Alignment.centerLeft,
                         child: Container(
                           margin: const EdgeInsets.symmetric(vertical: 6),
                           padding: const EdgeInsets.all(12),
@@ -149,7 +186,8 @@ class _ChatScreenState extends State<ChatScreen> {
           if (_isLoading)
             const Padding(
               padding: EdgeInsets.all(8),
-              child: Text('ChickAI думает...', style: TextStyle(color: Colors.white54)),
+              child: Text('ChickAI думает...',
+                  style: TextStyle(color: Colors.white54)),
             ),
           Container(
             padding: const EdgeInsets.all(12),
@@ -161,7 +199,9 @@ class _ChatScreenState extends State<ChatScreen> {
                     controller: _controller,
                     style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
-                      hintText: 'Напиши сообщение...',
+                      hintText: _modelReady
+                          ? 'Напиши сообщение...'
+                          : 'Модель загружается...',
                       hintStyle: const TextStyle(color: Colors.white38),
                       filled: true,
                       fillColor: const Color(0xFF0A0A0A),
@@ -169,7 +209,8 @@ class _ChatScreenState extends State<ChatScreen> {
                         borderRadius: BorderRadius.circular(24),
                         borderSide: BorderSide.none,
                       ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
                     ),
                     onSubmitted: (_) => _sendMessage(),
                   ),
@@ -179,7 +220,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   backgroundColor: const Color(0xFF6C5CE7),
                   child: IconButton(
                     icon: const Icon(Icons.send, color: Colors.white),
-                    onPressed: _sendMessage,
+                    onPressed: _modelReady ? _sendMessage : null,
                   ),
                 ),
               ],
@@ -189,4 +230,4 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
   }
-}
+} 
