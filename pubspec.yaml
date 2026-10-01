@@ -17,5 +17,5 @@ flutter:
   uses-material-design: true
   assets:
     - assets/logo.png
-    - assets/gemma-3-1b-q4.gguf
+     
   
